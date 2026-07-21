@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Syllabus Analyzer | David Eccles School of Business</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root { --crimson:#BE0000; --dark:#1a1a1a; --gray:#f4f4f4; --border:#ddd; --flag:#fff3cd; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system, Segoe UI, Roboto, sans-serif; color:var(--dark); background:#fafafa; }
+  header { background:var(--crimson); color:#fff; padding:16px 24px; }
+  header h1 { font-size:20px; }
+  header p { font-size:13px; opacity:.85; }
+  nav { display:flex; background:#fff; border-bottom:2px solid var(--border); padding:0 24px; }
+  nav button { border:none; background:none; padding:14px 18px; font-size:14px; cursor:pointer; border-bottom:3px solid transparent; }
+  nav button.active { border-bottom-color:var(--crimson); font-weight:600; color:var(--crimson); }
+  main { padding:24px; max-width:1300px; margin:0 auto; }
+  .tab { display:none; } .tab.active { display:block; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:20px; margin-bottom:16px; }
+  h2 { font-size:16px; margin-bottom:12px; }
+  button.primary { background:var(--crimson); color:#fff; border:none; padding:10px 18px; border-radius:6px; font-size:14px; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--dark); border:1px solid #bbb; padding:9px 16px; border-radius:6px; font-size:14px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  #dropzone { border:2px dashed #bbb; border-radius:8px; padding:36px; text-align:center; color:#666; cursor:pointer; }
+  #dropzone.drag { border-color:var(--crimson); background:#fff5f5; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { border:1px solid var(--border); padding:7px 9px; text-align:left; vertical-align:top; }
+  th { background:var(--gray); position:sticky; top:0; }
+  td input, td select { width:100%; border:1px solid #ccc; border-radius:4px; padding:4px; font-size:13px; }
+  .status-done { color:#1a7f37; font-weight:600; } .status-error { color:var(--crimson); font-weight:600; } .status-run { color:#9a6700; font-weight:600; }
+  .chip { display:inline-block; background:#eee; border-radius:10px; padding:2px 8px; margin:1px; font-size:11px; }
+  .flagged { background:var(--flag); }
+  .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:center; }
+  .toolbar input, .toolbar select { padding:8px; border:1px solid #ccc; border-radius:6px; font-size:13px; }
+  #detailModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:50; }
+  #detailModal .inner { background:#fff; max-width:820px; margin:4vh auto; border-radius:8px; padding:24px; max-height:88vh; overflow:auto; }
+  #detailModal label { font-weight:600; font-size:13px; display:block; margin:12px 0 4px; }
+  #detailModal textarea, #detailModal input { width:100%; border:1px solid #ccc; border-radius:6px; padding:8px; font-size:13px; }
+  #detailModal textarea { min-height:70px; }
+  .field-def { color:#666; font-size:12px; }
+  .help p, .help li { font-size:14px; line-height:1.6; margin-bottom:8px; }
+  .warn { background:var(--flag); border:1px solid #e0c860; border-radius:6px; padding:10px 14px; font-size:13px; margin-bottom:12px; }
+  .small { font-size:12px; color:#666; }
+  progress { width:100%; height:14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Syllabus Analyzer</h1>
+  <p>David Eccles School of Business | AI syllabus extraction and course repository</p>
+</header>
+<nav>
+  <button data-tab="upload" class="active">1. Upload & Extract</button>
+  <button data-tab="results">2. Results</button>
+  <button data-tab="skills">Skills Matrix</button>
+  <button data-tab="fields">Fields</button>
+  <button data-tab="settings">Settings</button>
+  <button data-tab="help">Help</button>
+</nav>
+<main>
+<div id="storageWarn" style="display:none" class="warn">
+  <strong>Storage full.</strong> Your latest changes could not be auto-saved. <strong>Use Save Database File on the Results tab right now</strong> to avoid losing data. Once saved, you can free up space by clicking Erase All Local Data in Settings and reloading the saved file.
+</div>
+
+<div class="tab active" id="tab-upload">
+  <div class="card">
+    <h2>Add syllabi</h2>
+    <div id="dropzone">Drag syllabus files here or click to browse<br><span class="small">Accepts PDF, Word (.docx), Excel (.xlsx), and text files</span></div>
+    <input type="file" id="fileInput" multiple accept=".pdf,.docx,.xlsx,.xls,.txt" style="display:none">
+  </div>
+  <div class="card">
+    <h2>Queue</h2>
+    <p class="small" style="margin-bottom:8px">Course, semester, and year are guessed from the filename. Fix anything wrong before running. Blank cells are fine, the AI will read them from the document.</p>
+    <table id="queueTable"><thead><tr><th>File</th><th style="width:130px">Course</th><th style="width:110px">Semester</th><th style="width:80px">Year</th><th style="width:110px">Status</th><th style="width:60px"></th></tr></thead><tbody></tbody></table>
+    <div class="toolbar" style="margin-top:12px">
+      <button class="primary" id="runBtn">Run Extraction</button>
+      <button class="secondary" id="stopBtn" disabled>Stop</button>
+      <button class="secondary" id="clearQueueBtn">Clear Finished</button>
+    </div>
+    <progress id="prog" value="0" max="100" style="display:none"></progress>
+    <p class="small" id="progText"></p>
+  </div>
+</div>
+
+<div class="tab" id="tab-results">
+  <div class="card">
+    <div class="toolbar">
+      <input type="text" id="searchBox" placeholder="Search all fields...">
+      <select id="semFilter"><option value="">All semesters</option></select>
+      <select id="skillFilter"><option value="">All durable skills</option></select>
+      <select id="reviewFilter"><option value="">Reviewed & unreviewed</option><option value="yes">Reviewed only</option><option value="no">Unreviewed only</option></select>
+      <span class="small" id="rowCount"></span>
+    </div>
+    <div class="toolbar">
+      <button class="primary" id="csvBtn">Export CSV</button>
+      <button class="secondary" id="saveDbBtn">Save Database File</button>
+      <button class="secondary" id="loadDbBtn">Load Database File</button>
+      <button class="secondary" id="deleteSelBtn">Delete Selected</button>
+      <button class="secondary" id="reextractBtn">Re-extract Selected</button>
+      <button class="secondary" id="colToggleBtn">Columns...</button>
+      <input type="file" id="dbFileInput" accept=".json" style="display:none">
+      <input type="file" id="reextractFileInput" multiple accept=".pdf,.docx,.xlsx,.xls,.txt" style="display:none">
+    </div>
+    <div id="colPanel" style="display:none;background:#f9f9f9;border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:8px;flex-wrap:wrap;gap:4px 0"></div>
+    <p class="small" id="reextractStatus" style="margin-bottom:4px;display:none"></p>
+    <p class="small" style="margin-bottom:8px">Yellow cells were flagged by the AI as uncertain, or read "not stated". Click any row to review and edit it. Checking a row marks it spot-checked.</p>
+    <div style="overflow:auto; max-height:65vh">
+      <table id="resultsTable"><thead></thead><tbody></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div class="tab" id="tab-skills">
+  <div class="card">
+    <div class="toolbar">
+      <select id="skillsSemFilter"><option value="">All semesters</option></select>
+      <span class="small" id="skillsCount"></span>
+    </div>
+    <p class="small" style="margin-bottom:8px">Each row is a unique course number. A checkmark means at least one extracted syllabus for that course cited evidence for that competency. Hover a checkmark to read the AI's evidence. The totals row counts how many courses have evidence for each skill.</p>
+    <div style="overflow:auto; max-height:65vh">
+      <table id="skillsTable"><thead></thead><tbody></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div class="tab" id="tab-fields">
+  <div class="card">
+    <h2>Extraction fields</h2>
+    <p class="small" style="margin-bottom:10px">Each field has a name and a definition. The definition is the instruction the AI follows, so write it the way you would explain the field to a new employee. Changes apply to the next extraction run. Course number, section, semester, year, instructor, durable skills, and confidence flags are always extracted and cannot be removed.</p>
+    <table id="fieldsTable"><thead><tr><th style="width:40px">On</th><th style="width:200px">Field name</th><th>Definition (what the AI looks for)</th><th style="width:60px"></th></tr></thead><tbody></tbody></table>
+    <div class="toolbar" style="margin-top:12px">
+      <button class="secondary" id="addFieldBtn">Add Field</button>
+      <button class="secondary" id="resetFieldsBtn">Restore Default Fields</button>
+    </div>
+  </div>
+</div>
+
+<div class="tab" id="tab-settings">
+  <div class="card">
+    <h2>Anthropic API</h2>
+    <label class="small">API key (stored only in this browser)</label>
+    <input type="password" id="apiKey" style="width:100%; padding:8px; margin:6px 0" placeholder="sk-ant-...">
+    <label class="small">Model</label>
+    <select id="modelSelect" style="padding:8px; margin:6px 0; display:block">
+      <option value="claude-sonnet-4-6">Claude Sonnet (recommended)</option>
+      <option value="claude-haiku-4-5">Claude Haiku (faster, cheaper)</option>
+    </select>
+    <button class="primary" id="saveSettingsBtn">Save Settings</button>
+    <p class="small" id="settingsMsg" style="margin-top:8px"></p>
+  </div>
+  <div class="card">
+    <h2>Data</h2>
+    <p class="small">Everything is auto-saved in this browser. For permanent storage and sharing, use Save Database File on the Results tab and keep the file in the shared OneDrive or Box folder next to the original syllabi.</p>
+    <div class="toolbar" style="margin-top:10px"><button class="secondary" id="wipeBtn">Erase All Local Data</button></div>
+  </div>
+</div>
+
+<div class="tab help" id="tab-help">
+  <div class="card">
+    <h2>How to use this app</h2>
+    <p><strong>One-time setup:</strong> On Settings, paste the school's Anthropic API key and save. The key stays in this browser only.</p>
+    <p><strong>Each semester:</strong></p>
+    <ol style="margin-left:20px">
+      <li>Drop the semester's syllabi on the Upload tab and correct any guessed course or semester labels.</li>
+      <li>Click Run Extraction and wait. Each syllabus takes roughly 20 to 60 seconds.</li>
+      <li>On Results, spot-check a sample of rows against the original syllabi. Yellow cells first. Check off each reviewed row.</li>
+      <li>Click Save Database File and put the file in the shared folder. This file is the repository. Load it back anytime, on any computer.</li>
+      <li>Export CSV whenever you want to analyze in Excel, Airtable, or Power BI.</li>
+    </ol>
+    <p><strong>Multi-section syllabi:</strong> A syllabus covering several sections becomes one row per section. Rows from the same file share a Source value.</p>
+    <p><strong>Durable skills:</strong> Tagged against the eight NACE career readiness competencies, each with the evidence the AI found. Treat skills as inferences to verify, not facts.</p>
+    <p><strong>Adding fields later:</strong> Add the field on the Fields tab, then re-run older syllabi if you need the new field filled in historically.</p>
+  </div>
+</div>
+
+</main>
+
+<div id="detailModal"><div class="inner">
+  <h2 id="detailTitle"></h2>
+  <div id="detailBody"></div>
+  <div class="toolbar" style="margin-top:16px">
+    <button class="primary" id="detailSave">Save Changes</button>
+    <button class="secondary" id="detailClose">Close</button>
+  </div>
+</div></div>
+
+<script>
+const NACE = ["Career & Self-Development","Communication","Critical Thinking","Equity & Inclusion","Leadership","Professionalism","Teamwork","Technology"];
+const DEFAULT_FIELDS = [
+ {on:true,name:"Learning Outcomes",def:"The stated learning outcomes, objectives, or goals of the course. List each one. They may appear under headings like Course Objectives, Course Outcomes, or inside prose such as 'by the end of this course students will be able to'."},
+ {on:true,name:"Topics Covered",def:"The main subject-matter topics taught, drawn from the course description and the week-by-week schedule. List distinct topics, not dates."},
+ {on:true,name:"Assessment Methods",def:"Every graded component with its weight or point value, for example 'Exams 40%; Group presentation 22%; Attendance 5%'. Note whether the final exam is comprehensive or departmental if stated."},
+ {on:true,name:"Class Format",def:"Delivery and structure: in person, online, hybrid, lecture, discussion, flipped, experiential, and meeting pattern if stated."},
+ {on:true,name:"Pedagogy & Engagement",def:"Teaching and engagement techniques used: case studies, group projects, simulations, labs, field experiences, guest speakers or panels, in-class activities, pop quizzes, presentations, and similar."},
+ {on:true,name:"Required Materials",def:"Required textbooks, software platforms, calculators, subscriptions, and other required materials, including edition and publisher when given."},
+ {on:true,name:"Attendance Policy",def:"How attendance is tracked, whether it affects the grade, how many absences are allowed, and any notable exceptions process."}
+];
+let S = { fields: JSON.parse(JSON.stringify(DEFAULT_FIELDS)), rows: [], queue: [] };
+let running = false, stopFlag = false, reextractSources = [];
+let hiddenCols = new Set(JSON.parse(localStorage.getItem("sa_hiddenCols")||"[]"));
+function saveHiddenCols(){ localStorage.setItem("sa_hiddenCols", JSON.stringify([...hiddenCols])); }
+
+function migrateRows(rows){
+  for(const r of rows){
+    if(r.meeting_pattern===undefined) r.meeting_pattern="not stated";
+    if(r.location===undefined) r.location="not stated";
+    if(r.final_exam===undefined) r.final_exam="not stated";
+  }
+  return rows;
+}
+function persist(){
+  try{
+    localStorage.setItem("syllabusAnalyzer", JSON.stringify({version:2, fields:S.fields, rows:S.rows}));
+    document.getElementById("storageWarn").style.display = "none";
+  }catch(e){
+    document.getElementById("storageWarn").style.display = "block";
+  }
+}
+function restore(){ try{ const d = JSON.parse(localStorage.getItem("syllabusAnalyzer")); if(d){ S.fields = d.fields||S.fields; S.rows = migrateRows(d.rows||[]); } }catch(e){} }
+const esc = s => String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+/* ---------- tabs ---------- */
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active"); document.getElementById("tab-"+b.dataset.tab).classList.add("active");
+  if(b.dataset.tab==="results") renderResults();
+  if(b.dataset.tab==="skills") renderSkills();
+  if(b.dataset.tab==="fields") renderFields();
+});
+
+/* ---------- upload & queue ---------- */
+const dz = document.getElementById("dropzone"), fi = document.getElementById("fileInput");
+dz.onclick = () => fi.click();
+dz.ondragover = e => { e.preventDefault(); dz.classList.add("drag"); };
+dz.ondragleave = () => dz.classList.remove("drag");
+dz.ondrop = e => { e.preventDefault(); dz.classList.remove("drag"); addFiles(e.dataTransfer.files); };
+fi.onchange = () => { addFiles(fi.files); fi.value=""; };
+
+function guessMeta(name){
+  const c = name.match(/([A-Za-z]{2,6})[\s_+-]?(\d{4})/); 
+  const sem = (name.match(/spring|summer|fall|winter/i)||[""])[0];
+  const yr = (name.match(/20\d\d/)||[""])[0];
+  return { course: c ? (c[1].toUpperCase()+" "+c[2]) : "", semester: sem ? sem[0].toUpperCase()+sem.slice(1).toLowerCase() : "", year: yr };
+}
+function addFiles(list){
+  for(const f of list){
+    const ext = f.name.split(".").pop().toLowerCase();
+    if(!["pdf","docx","xlsx","xls","txt"].includes(ext)){ alert(f.name+": unsupported format. Convert .doc files to .docx or PDF."); continue; }
+    S.queue.push({ id:uid(), file:f, name:f.name, ext, status:"queued", error:"", ...guessMeta(f.name) });
+  }
+  renderQueue();
+}
+function renderQueue(){
+  const tb = document.querySelector("#queueTable tbody"); tb.innerHTML="";
+  for(const q of S.queue){
+    const tr = document.createElement("tr");
+    const st = q.status==="done" ? "status-done" : q.status==="error" ? "status-error" : (q.status==="queued"?"":"status-run");
+    tr.innerHTML = `<td>${esc(q.name)}</td>
+      <td><input value="${esc(q.course)}" data-k="course"></td>
+      <td><input value="${esc(q.semester)}" data-k="semester"></td>
+      <td><input value="${esc(q.year)}" data-k="year"></td>
+      <td class="${st}">${esc(q.status)}${q.error?": "+esc(q.error):""}</td>
+      <td><button class="secondary" style="padding:3px 8px">✕</button></td>`;
+    tr.querySelectorAll("input").forEach(inp => inp.onchange = () => q[inp.dataset.k] = inp.value.trim());
+    tr.querySelector("button").onclick = () => { S.queue = S.queue.filter(x=>x!==q); renderQueue(); };
+    tb.appendChild(tr);
+  }
+}
+document.getElementById("clearQueueBtn").onclick = () => { S.queue = S.queue.filter(q=>q.status!=="done"); renderQueue(); };
+
+/* ---------- file reading ---------- */
+function readAsBase64(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(",")[1]); r.onerror=rej; r.readAsDataURL(file); }); }
+function readAsArrayBuffer(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsArrayBuffer(file); }); }
+async function getContentBlock(q){
+  if(q.ext==="pdf"){
+    if(q.file.size > 30*1024*1024) throw new Error("PDF over 30MB, please compress it");
+    return { type:"document", source:{ type:"base64", media_type:"application/pdf", data: await readAsBase64(q.file) } };
+  }
+  let text = "";
+  if(q.ext==="docx"){
+    const buf = await readAsArrayBuffer(q.file);
+    text = (await mammoth.extractRawText({arrayBuffer:buf})).value;
+  } else if(q.ext==="xlsx"||q.ext==="xls"){
+    const wb = XLSX.read(await readAsArrayBuffer(q.file), {type:"array"});
+    text = wb.SheetNames.map(n => "=== Sheet: "+n+" ===\n" + XLSX.utils.sheet_to_csv(wb.Sheets[n], {blankrows:false})).join("\n\n");
+  } else {
+    text = await q.file.text();
+  }
+  text = text.replace(/\u0000/g,"").trim();
+  if(text.length < 100) throw new Error("almost no text found in this file, check the document");
+  return { type:"text", text: "SYLLABUS DOCUMENT:\n\n"+text };
+}
+
+/* ---------- extraction ---------- */
+function buildSystemPrompt(){
+  const active = S.fields.filter(f=>f.on);
+  const fieldLines = active.map(f=>`- "${f.name}": ${f.def}`).join("\n");
+  return `You are extracting structured data from a university course syllabus for the David Eccles School of Business curriculum database.
+
+Extract the following custom fields. Follow each definition exactly:
+${fieldLines}
+
+Also extract these standard items:
+- course_number (e.g. "ACCTG 3100"), semester, year, instructor name — shared across all sections.
+- section: the section number (e.g. "009"). If the syllabus covers multiple sections, output ONE object per section. If no section number is stated, output one object with section "not stated".
+- meeting_pattern: the days and times the section meets (e.g. "MWF 9:10–10:00 AM", "TR 2:00–3:20 PM"). SECTION-SPECIFIC — will differ across sections.
+- location: the classroom, building, or delivery mode for this section (e.g. "SFEBB 2110", "online", "hybrid"). SECTION-SPECIFIC.
+- final_exam: the date and time of this section's final exam, if stated. SECTION-SPECIFIC.
+- durable_skills: judge which of these NACE career readiness competencies the course develops: ${NACE.join("; ")}. Only tag a skill when the syllabus contains concrete evidence (an activity, assignment, outcome, or policy). For each, give the evidence briefly. Do not tag skills without evidence. Shared across sections.
+- confidence_flags: list the names of any fields (custom or standard) where you were uncertain, the document was ambiguous, or you had to interpret heavily.
+
+Rules:
+- If something is not in the document, write exactly "not stated". Never guess or invent.
+- The custom fields above describe course-level content. For multi-section syllabi, copy them identically across sections unless the syllabus clearly states they differ.
+- Ignore boilerplate university policy statements (ADA, Title IX, safety, academic misconduct) unless a field definition asks about them.
+- Base everything strictly on the document.
+
+Return ONLY valid JSON, no markdown fences, in this exact shape:
+{"sections":[{"course_number":"","section":"","semester":"","year":"","instructor":"","meeting_pattern":"","location":"","final_exam":"","fields":{${active.map(f=>`"${f.name}":""`).join(",")}},"durable_skills":[{"skill":"","evidence":""}],"confidence_flags":[]}]}`;
+}
+
+function buildHint(q){
+  const parts = [q.course&&("Course: "+q.course), q.semester&&("Semester: "+q.semester), q.year&&("Year: "+q.year)].filter(Boolean);
+  return parts.length ? "Known metadata from the file record (use it, and only override it if the document clearly contradicts it): "+parts.join(", ") : "";
+}
+
+async function callClaude(contentBlock, systemPrompt, hint){
+  const key = localStorage.getItem("sa_apiKey")||"";
+  const model = localStorage.getItem("sa_model")||"claude-sonnet-4-6";
+  if(!key) throw new Error("no API key saved in Settings");
+  const userContent = [];
+  if(hint) userContent.push({ type:"text", text: hint });
+  userContent.push(contentBlock);
+  const body = {
+    model, max_tokens: 16000,
+    system: [{ type:"text", text: systemPrompt, cache_control:{ type:"ephemeral" } }],
+    messages:[{ role:"user", content: userContent }]
+  };
+  for(let attempt=1; attempt<=3; attempt++){
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{ "content-type":"application/json", "x-api-key":key, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+      body: JSON.stringify(body)
+    });
+    if(res.status===429 || res.status===529){ await new Promise(r=>setTimeout(r, 15000*attempt)); continue; }
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error && data.error.message ? data.error.message : "API error "+res.status);
+    return data.content.map(c=>c.text||"").join("");
+  }
+  throw new Error("rate limited three times, try again in a minute");
+}
+function parseResult(raw){
+  let t = raw.trim().replace(/^```json/i,"").replace(/^```/,"").replace(/```$/,"").trim();
+  const start = t.indexOf("{"), end = t.lastIndexOf("}");
+  if(start<0||end<0) throw new Error("AI did not return JSON");
+  return JSON.parse(t.slice(start, end+1));
+}
+
+document.getElementById("runBtn").onclick = async () => {
+  if(running) return;
+  const todo = S.queue.filter(q=>q.status==="queued"||q.status==="error");
+  if(!todo.length){ alert("Nothing queued."); return; }
+  if(!localStorage.getItem("sa_apiKey")){ alert("Add the API key in Settings first."); return; }
+  running = true; stopFlag = false;
+  document.getElementById("runBtn").disabled = true; document.getElementById("stopBtn").disabled = false;
+  const prog = document.getElementById("prog"); prog.style.display="block"; prog.max = todo.length; prog.value = 0;
+  let done = 0;
+  for(const q of todo){
+    if(stopFlag) break;
+    try{
+      const existingCount = S.rows.filter(r=>r.source===q.name).length;
+      if(existingCount > 0){
+        const proceed = confirm(`"${q.name}" already has ${existingCount} row(s) in the database.\n\nExtract again? This will add duplicate rows.\n\nOK = extract anyway    Cancel = skip this file`);
+        if(!proceed){ q.status="queued"; done++; prog.value=done; renderQueue(); continue; }
+      }
+      q.status = "reading"; q.error=""; renderQueue();
+      const block = await getContentBlock(q);
+      q.status = "extracting"; renderQueue();
+      document.getElementById("progText").textContent = "Working on "+q.name+" ("+(done+1)+" of "+todo.length+")";
+      const parsed = parseResult(await callClaude(block, buildSystemPrompt(), buildHint(q)));
+      const secs = Array.isArray(parsed.sections)&&parsed.sections.length ? parsed.sections : [parsed];
+      for(const s of secs){
+        S.rows.push({
+          id: uid(), source: q.name,
+          course: s.course_number || q.course || "not stated",
+          section: s.section || "not stated",
+          semester: s.semester || q.semester || "not stated",
+          year: String(s.year || q.year || "not stated"),
+          instructor: s.instructor || "not stated",
+          meeting_pattern: s.meeting_pattern || "not stated",
+          location: s.location || "not stated",
+          final_exam: s.final_exam || "not stated",
+          fields: s.fields || {},
+          skills: Array.isArray(s.durable_skills) ? s.durable_skills.filter(k=>k&&k.skill) : [],
+          flags: Array.isArray(s.confidence_flags) ? s.confidence_flags : [],
+          reviewed: false, extractedAt: new Date().toISOString()
+        });
+      }
+      q.status = "done"; persist();
+    }catch(e){ q.status="error"; q.error = e.message; }
+    done++; prog.value = done; renderQueue();
+  }
+  running = false; document.getElementById("runBtn").disabled=false; document.getElementById("stopBtn").disabled=true;
+  document.getElementById("progText").textContent = stopFlag ? "Stopped." : "Finished. See the Results tab.";
+};
+document.getElementById("stopBtn").onclick = () => { stopFlag = true; };
+
+/* ---------- results ---------- */
+function activeFieldNames(){ return S.fields.filter(f=>f.on).map(f=>f.name); }
+function rowMatches(r){
+  const q = document.getElementById("searchBox").value.toLowerCase();
+  const sem = document.getElementById("semFilter").value;
+  const sk = document.getElementById("skillFilter").value;
+  const rv = document.getElementById("reviewFilter").value;
+  if(sem && (r.semester+" "+r.year) !== sem) return false;
+  if(sk && !r.skills.some(s=>s.skill===sk)) return false;
+  if(rv==="yes" && !r.reviewed) return false;
+  if(rv==="no" && r.reviewed) return false;
+  if(q){
+    const blob = [r.source,r.course,r.section,r.semester,r.year,r.instructor,r.meeting_pattern,r.location,r.final_exam,JSON.stringify(r.fields),JSON.stringify(r.skills)].join(" ").toLowerCase();
+    if(!blob.includes(q)) return false;
+  }
+  return true;
+}
+function renderResults(){
+  const names = activeFieldNames();
+  const visNames = names.filter(n=>!hiddenCols.has(n));
+  const show = c => !hiddenCols.has(c);
+  const semSet = [...new Set(S.rows.map(r=>r.semester+" "+r.year))].sort();
+  const semSel = document.getElementById("semFilter"); const cur = semSel.value;
+  semSel.innerHTML = '<option value="">All semesters</option>' + semSet.map(s=>`<option${s===cur?" selected":""}>${esc(s)}</option>`).join("");
+  const skSel = document.getElementById("skillFilter"); const curSk = skSel.value;
+  skSel.innerHTML = '<option value="">All durable skills</option>' + NACE.map(s=>`<option${s===curSk?" selected":""}>${esc(s)}</option>`).join("");
+  document.querySelector("#resultsTable thead").innerHTML =
+    "<tr><th style='width:30px'>✓</th><th>Course</th><th>Sec</th><th>Semester</th>" +
+    (show("Meeting") ? "<th>Meeting</th>" : "") +
+    (show("Location") ? "<th>Location</th>" : "") +
+    (show("Instructor") ? "<th>Instructor</th>" : "") +
+    (show("Durable Skills") ? "<th>Durable Skills</th>" : "") +
+    visNames.map(n=>"<th>"+esc(n)+"</th>").join("") +
+    "<th style='width:30px'>Sel</th></tr>";
+  const tb = document.querySelector("#resultsTable tbody"); tb.innerHTML = "";
+  const shown = S.rows.filter(rowMatches);
+  document.getElementById("rowCount").textContent = shown.length + " of " + S.rows.length + " rows";
+  for(const r of shown){
+    const tr = document.createElement("tr");
+    const cell = (name) => {
+      const v = r.fields[name]==null?"not stated":String(r.fields[name]);
+      const bad = r.flags.includes(name) || v.trim().toLowerCase()==="not stated";
+      const short = v.length>140 ? v.slice(0,140)+"…" : v;
+      return `<td class="${bad?"flagged":""}">${esc(short)}</td>`;
+    };
+    const sectionFlagged = k => r.flags.includes(k) || (r[k]||"").trim().toLowerCase()==="not stated";
+    tr.innerHTML = `<td><input type="checkbox" ${r.reviewed?"checked":""} data-a="rev"></td>
+      <td>${esc(r.course)}</td><td>${esc(r.section)}</td><td>${esc(r.semester)} ${esc(r.year)}</td>` +
+      (show("Meeting") ? `<td class="${sectionFlagged("meeting_pattern")?"flagged":""}">${esc(r.meeting_pattern||"not stated")}</td>` : "") +
+      (show("Location") ? `<td class="${sectionFlagged("location")?"flagged":""}">${esc(r.location||"not stated")}</td>` : "") +
+      (show("Instructor") ? `<td class="${sectionFlagged("instructor")?"flagged":""}">${esc(r.instructor)}</td>` : "") +
+      (show("Durable Skills") ? `<td>${r.skills.map(s=>`<span class="chip" title="${esc(s.evidence)}">${esc(s.skill)}</span>`).join("")}</td>` : "") +
+      visNames.map(cell).join("") +
+      `<td><input type="checkbox" data-a="sel"></td>`;
+    tr.querySelector('[data-a="rev"]').onclick = e => { e.stopPropagation(); r.reviewed = e.target.checked; persist(); };
+    tr.querySelector('[data-a="sel"]').onclick = e => { e.stopPropagation(); r._sel = e.target.checked; };
+    tr.onclick = () => openDetail(r);
+    tb.appendChild(tr);
+  }
+}
+["searchBox","semFilter","skillFilter","reviewFilter"].forEach(id => document.getElementById(id).oninput = renderResults);
+
+function renderColPanel(){
+  const toggleable = ["Meeting","Location","Instructor","Durable Skills",...activeFieldNames()];
+  const panel = document.getElementById("colPanel");
+  panel.innerHTML = '<span class="small" style="margin-right:12px;font-weight:600">Show columns:</span>' +
+    toggleable.map(name=>`<label style="margin-right:14px;font-size:13px;cursor:pointer;white-space:nowrap"><input type="checkbox" ${!hiddenCols.has(name)?"checked":""} data-col="${esc(name)}"> ${esc(name)}</label>`).join("");
+  panel.querySelectorAll("input[data-col]").forEach(cb=>{
+    cb.onchange = () => { hiddenCols[cb.checked?"delete":"add"](cb.dataset.col); saveHiddenCols(); renderResults(); };
+  });
+}
+document.getElementById("colToggleBtn").onclick = () => {
+  const panel = document.getElementById("colPanel");
+  const open = panel.style.display !== "none";
+  panel.style.display = open ? "none" : "flex";
+  if(!open) renderColPanel();
+};
+document.getElementById("deleteSelBtn").onclick = () => {
+  const n = S.rows.filter(r=>r._sel).length;
+  if(!n) return alert("Select rows first (right-hand checkbox).");
+  if(confirm("Delete "+n+" row(s)? The original syllabi are unaffected.")){ S.rows = S.rows.filter(r=>!r._sel); persist(); renderResults(); }
+};
+
+document.getElementById("reextractBtn").onclick = () => {
+  if(running){ alert("An extraction is already running. Wait for it to finish."); return; }
+  if(!localStorage.getItem("sa_apiKey")){ alert("Add the API key in Settings first."); return; }
+  const selRows = S.rows.filter(r=>r._sel);
+  if(!selRows.length){ alert("Select rows first (right-hand checkbox)."); return; }
+  reextractSources = [...new Set(selRows.map(r=>r.source))];
+  const msg = reextractSources.length===1
+    ? `Select the file for: ${reextractSources[0]}`
+    : `Select the ${reextractSources.length} source files:\n${reextractSources.join("\n")}`;
+  alert("Next: pick the original syllabus file(s) from your computer.\n\n"+msg+"\n\nFilenames must match exactly. Existing rows for each matched file will be replaced.");
+  document.getElementById("reextractFileInput").click();
+};
+
+document.getElementById("reextractFileInput").onchange = async (e) => {
+  const picked = [...e.target.files]; e.target.value = "";
+  const needed = reextractSources;
+  const matched = needed.map(src=>({ src, file: picked.find(f=>f.name===src) }));
+  const missing = matched.filter(m=>!m.file).map(m=>m.src);
+  const ready = matched.filter(m=>!!m.file);
+  if(!ready.length){ alert("None of the picked files matched the needed filenames:\n"+needed.join("\n")); return; }
+  if(missing.length){
+    const ok = confirm(`${missing.length} file(s) not matched and will be skipped:\n${missing.join("\n")}\n\nContinue with the ${ready.length} matched file(s)?`);
+    if(!ok) return;
+  }
+  const oldCount = ready.reduce((n,m)=>n+S.rows.filter(r=>r.source===m.src).length, 0);
+  if(!confirm(`Re-extract ${ready.length} file(s)? This will delete ${oldCount} existing row(s) and replace them with fresh results. Reviewed status will reset.`)) return;
+
+  running = true;
+  document.getElementById("runBtn").disabled = true;
+  document.getElementById("reextractBtn").disabled = true;
+  const status = document.getElementById("reextractStatus");
+  status.style.display = "block";
+
+  for(const {src, file} of ready){
+    status.textContent = "Re-extracting "+src+"...";
+    const ext = file.name.split(".").pop().toLowerCase();
+    const ref = S.rows.find(r=>r.source===src);
+    const q = { id:uid(), file, name:file.name, ext, course:ref?.course||"", semester:ref?.semester||"", year:ref?.year||"" };
+    try{
+      const block = await getContentBlock(q);
+      const parsed = parseResult(await callClaude(block, buildSystemPrompt(), buildHint(q)));
+      const secs = Array.isArray(parsed.sections)&&parsed.sections.length ? parsed.sections : [parsed];
+      S.rows = S.rows.filter(r=>r.source!==src);
+      for(const s of secs){
+        S.rows.push({
+          id:uid(), source:src,
+          course: s.course_number||q.course||"not stated",
+          section: s.section||"not stated",
+          semester: s.semester||q.semester||"not stated",
+          year: String(s.year||q.year||"not stated"),
+          instructor: s.instructor||"not stated",
+          meeting_pattern: s.meeting_pattern||"not stated",
+          location: s.location||"not stated",
+          final_exam: s.final_exam||"not stated",
+          fields: s.fields||{},
+          skills: Array.isArray(s.durable_skills)?s.durable_skills.filter(k=>k&&k.skill):[],
+          flags: Array.isArray(s.confidence_flags)?s.confidence_flags:[],
+          reviewed: false, extractedAt: new Date().toISOString()
+        });
+      }
+      persist();
+    }catch(err){ alert("Error re-extracting "+src+": "+err.message); }
+  }
+
+  running = false;
+  document.getElementById("runBtn").disabled = false;
+  document.getElementById("reextractBtn").disabled = false;
+  status.textContent = "Re-extraction complete.";
+  renderResults(); renderSkills();
+};
+
+/* ---------- detail editor ---------- */
+let editing = null;
+function openDetail(r){
+  editing = r;
+  document.getElementById("detailTitle").textContent = r.course+" sec "+r.section+" | "+r.semester+" "+r.year+" | source: "+r.source;
+  const names = activeFieldNames();
+  let h = "";
+  [["course","Course"],["section","Section"],["semester","Semester"],["year","Year"],["instructor","Instructor"],["meeting_pattern","Meeting Pattern"],["location","Location"],["final_exam","Final Exam"]].forEach(([k,label])=>{
+    h += `<label>${label}${editing.flags.includes(k)?" (AI flagged uncertain)":""}</label><input data-core="${k}" value="${esc(r[k]||"")}">`;
+  });
+  for(const n of names){
+    h += `<label>${esc(n)}${r.flags.includes(n)?" (AI flagged uncertain)":""}</label><textarea data-field="${esc(n)}">${esc(r.fields[n]==null?"not stated":r.fields[n])}</textarea>`;
+  }
+  h += `<label>Durable skills (one per line, format Skill | evidence)</label><textarea data-skills>${esc(r.skills.map(s=>s.skill+" | "+s.evidence).join("\n"))}</textarea>`;
+  document.getElementById("detailBody").innerHTML = h;
+  document.getElementById("detailModal").style.display = "block";
+}
+document.getElementById("detailClose").onclick = () => document.getElementById("detailModal").style.display = "none";
+document.getElementById("detailSave").onclick = () => {
+  const box = document.getElementById("detailBody");
+  box.querySelectorAll("[data-core]").forEach(i => editing[i.dataset.core] = i.value.trim());
+  box.querySelectorAll("[data-field]").forEach(t => editing.fields[t.dataset.field] = t.value.trim());
+  editing.skills = box.querySelector("[data-skills]").value.split("\n").map(l=>l.trim()).filter(Boolean).map(l=>{ const [sk,...ev]=l.split("|"); return {skill:sk.trim(), evidence:ev.join("|").trim()}; });
+  editing.reviewed = true; persist(); renderResults();
+  document.getElementById("detailModal").style.display = "none";
+};
+
+/* ---------- skills matrix ---------- */
+function renderSkills(){
+  const semSel = document.getElementById("skillsSemFilter");
+  const semSet = [...new Set(S.rows.map(r=>r.semester+" "+r.year))].sort();
+  const cur = semSel.value;
+  semSel.innerHTML = '<option value="">All semesters</option>' + semSet.map(s=>`<option${s===cur?" selected":""}>${esc(s)}</option>`).join("");
+  const sem = semSel.value;
+  const rows = sem ? S.rows.filter(r=>(r.semester+" "+r.year)===sem) : S.rows;
+
+  const courseMap = new Map();
+  for(const r of rows){
+    if(!courseMap.has(r.course)) courseMap.set(r.course, new Map());
+    const sm = courseMap.get(r.course);
+    for(const s of r.skills){
+      if(!sm.has(s.skill)) sm.set(s.skill, []);
+      if(s.evidence) sm.get(s.skill).push(s.evidence);
+    }
+  }
+  const courses = [...courseMap.keys()].sort();
+  document.getElementById("skillsCount").textContent = courses.length+" course(s)";
+
+  const tbl = document.getElementById("skillsTable");
+  tbl.querySelector("thead").innerHTML = "<tr><th>Course</th>"+NACE.map(s=>`<th style="width:100px;text-align:center;font-size:12px">${esc(s)}</th>`).join("")+"</tr>";
+  const tb = tbl.querySelector("tbody"); tb.innerHTML = "";
+  for(const course of courses){
+    const sm = courseMap.get(course);
+    const tr = document.createElement("tr");
+    let h = `<td>${esc(course)}</td>`;
+    for(const skill of NACE){
+      const ev = sm.get(skill);
+      h += ev
+        ? `<td style="text-align:center"><span title="${esc([...new Set(ev)].join(" | "))}" style="color:#1a7f37;font-size:16px;cursor:default">✓</span></td>`
+        : `<td></td>`;
+    }
+    tr.innerHTML = h; tb.appendChild(tr);
+  }
+  const totals = document.createElement("tr");
+  totals.style.cssText = "font-weight:600;background:#f4f4f4";
+  totals.innerHTML = "<td>Courses with skill</td>"+NACE.map(skill=>`<td style="text-align:center">${courses.filter(c=>courseMap.get(c).has(skill)).length}</td>`).join("");
+  tb.appendChild(totals);
+}
+document.getElementById("skillsSemFilter").oninput = renderSkills;
+
+/* ---------- fields tab ---------- */
+function renderFields(){
+  const tb = document.querySelector("#fieldsTable tbody"); tb.innerHTML = "";
+  S.fields.forEach((f,i)=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><input type="checkbox" ${f.on?"checked":""}></td>
+      <td><input value="${esc(f.name)}"></td>
+      <td><input value="${esc(f.def)}" class="field-def"></td>
+      <td><button class="secondary" style="padding:3px 8px">✕</button></td>`;
+    const [chk, nameI, defI] = tr.querySelectorAll("input");
+    chk.onchange = () => { f.on = chk.checked; persist(); };
+    nameI.onchange = () => { f.name = nameI.value.trim() || f.name; persist(); };
+    defI.onchange = () => { f.def = defI.value.trim(); persist(); };
+    tr.querySelector("button").onclick = () => { if(confirm("Remove field '"+f.name+"'? Existing rows keep their data.")){ S.fields.splice(i,1); persist(); renderFields(); } };
+    tb.appendChild(tr);
+  });
+}
+document.getElementById("addFieldBtn").onclick = () => { S.fields.push({on:true,name:"New Field",def:"Describe here exactly what the AI should look for."}); persist(); renderFields(); };
+document.getElementById("resetFieldsBtn").onclick = () => { if(confirm("Restore the default field list? Custom fields will be removed from the list (existing rows keep their data).")){ S.fields = JSON.parse(JSON.stringify(DEFAULT_FIELDS)); persist(); renderFields(); } };
+
+/* ---------- save / load / export ---------- */
+function download(name, content, type){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([content], {type})); a.download = name; a.click();
+  URL.revokeObjectURL(a.href);
+}
+document.getElementById("saveDbBtn").onclick = () => {
+  download("syllabus-database-"+new Date().toISOString().slice(0,10)+".json", JSON.stringify({app:"SyllabusAnalyzer", version:2, savedAt:new Date().toISOString(), fields:S.fields, rows:S.rows}, null, 1), "application/json");
+};
+document.getElementById("loadDbBtn").onclick = () => document.getElementById("dbFileInput").click();
+document.getElementById("dbFileInput").onchange = async e => {
+  try{
+    const d = JSON.parse(await e.target.files[0].text());
+    if(!d.rows) throw new Error("not a Syllabus Analyzer database file");
+    const merge = S.rows.length && confirm("OK = MERGE the file's rows into what's already loaded.\nCancel = REPLACE everything with the file.");
+    if(merge){ const ids = new Set(S.rows.map(r=>r.id)); migrateRows(d.rows).forEach(r=>{ if(!ids.has(r.id)) S.rows.push(r); }); }
+    else { S.rows = migrateRows(d.rows); S.fields = d.fields || S.fields; }
+    persist(); renderResults(); renderFields();
+    alert("Loaded. "+S.rows.length+" rows in the database.");
+  }catch(err){ alert("Could not load file: "+err.message); }
+  e.target.value = "";
+};
+document.getElementById("csvBtn").onclick = () => {
+  const names = activeFieldNames();
+  const head = ["Source File","Course","Section","Semester","Year","Meeting Pattern","Location","Final Exam","Instructor",...names,"Durable Skills","Skills Evidence","AI Uncertainty Flags","Spot-Checked"];
+  const csvCell = v => '"' + String(v==null?"":v).replace(/"/g,'""') + '"';
+  const lines = [head.map(csvCell).join(",")];
+  for(const r of S.rows.filter(rowMatches)){
+    lines.push([r.source,r.course,r.section,r.semester,r.year,r.meeting_pattern||"not stated",r.location||"not stated",r.final_exam||"not stated",r.instructor,
+      ...names.map(n=>r.fields[n]==null?"not stated":r.fields[n]),
+      r.skills.map(s=>s.skill).join("; "),
+      r.skills.map(s=>s.skill+": "+s.evidence).join(" | "),
+      r.flags.join("; "), r.reviewed?"yes":"no"].map(csvCell).join(","));
+  }
+  download("syllabus-export-"+new Date().toISOString().slice(0,10)+".csv", "\uFEFF"+lines.join("\r\n"), "text/csv");
+};
+
+/* ---------- settings ---------- */
+document.getElementById("saveSettingsBtn").onclick = () => {
+  localStorage.setItem("sa_apiKey", document.getElementById("apiKey").value.trim());
+  localStorage.setItem("sa_model", document.getElementById("modelSelect").value);
+  document.getElementById("settingsMsg").textContent = "Saved.";
+};
+document.getElementById("wipeBtn").onclick = () => {
+  if(confirm("Erase all rows, fields, and the API key stored in this browser? Saved database files are unaffected.")){
+    localStorage.removeItem("syllabusAnalyzer"); localStorage.removeItem("sa_apiKey"); localStorage.removeItem("sa_model"); localStorage.removeItem("sa_hiddenCols"); location.reload();
+  }
+};
+
+/* ---------- init ---------- */
+restore();
+document.getElementById("apiKey").value = localStorage.getItem("sa_apiKey")||"";
+document.getElementById("modelSelect").value = localStorage.getItem("sa_model")||"claude-sonnet-4-6";
+renderQueue(); renderFields(); renderResults(); renderSkills();
+</script>
+</body>
+</html>
