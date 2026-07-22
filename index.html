@@ -206,6 +206,7 @@ function saveHiddenCols(){ localStorage.setItem("sa_hiddenCols", JSON.stringify(
 
 function migrateRows(rows){
   for(const r of rows){
+    if(r.title===undefined) r.title="not stated";
     if(r.meeting_pattern===undefined) r.meeting_pattern="not stated";
     if(r.location===undefined) r.location="not stated";
     if(r.final_exam===undefined) r.final_exam="not stated";
@@ -307,7 +308,7 @@ Extract the following custom fields. Follow each definition exactly:
 ${fieldLines}
 
 Also extract these standard items:
-- course_number (e.g. "ACCTG 3100"), semester, year, instructor name — shared across all sections.
+- course_number (e.g. "ACCTG 3100"), course_title (the full name of the course, e.g. "Financial Accounting"), semester, year, instructor name — shared across all sections.
 - section: the section number (e.g. "009"). If the syllabus covers multiple sections, output ONE object per section. If no section number is stated, output one object with section "not stated".
 - meeting_pattern: the days and times the section meets (e.g. "MWF 9:10–10:00 AM", "TR 2:00–3:20 PM"). SECTION-SPECIFIC — will differ across sections.
 - location: the classroom, building, or delivery mode for this section (e.g. "SFEBB 2110", "online", "hybrid"). SECTION-SPECIFIC.
@@ -322,7 +323,7 @@ Rules:
 - Base everything strictly on the document.
 
 Return ONLY valid JSON, no markdown fences, in this exact shape:
-{"sections":[{"course_number":"","section":"","semester":"","year":"","instructor":"","meeting_pattern":"","location":"","final_exam":"","fields":{${active.map(f=>`"${f.name}":""`).join(",")}},"durable_skills":[{"skill":"","evidence":""}],"confidence_flags":[]}]}`;
+{"sections":[{"course_number":"","course_title":"","section":"","semester":"","year":"","instructor":"","meeting_pattern":"","location":"","final_exam":"","fields":{${active.map(f=>`"${f.name}":""`).join(",")}},"durable_skills":[{"skill":"","evidence":""}],"confidence_flags":[]}]}`;
 }
 
 function buildHint(q){
@@ -389,6 +390,7 @@ document.getElementById("runBtn").onclick = async () => {
         S.rows.push({
           id: uid(), source: q.name,
           course: s.course_number || q.course || "not stated",
+          title: s.course_title || "not stated",
           section: s.section || "not stated",
           semester: s.semester || q.semester || "not stated",
           year: String(s.year || q.year || "not stated"),
@@ -423,7 +425,7 @@ function rowMatches(r){
   if(rv==="yes" && !r.reviewed) return false;
   if(rv==="no" && r.reviewed) return false;
   if(q){
-    const blob = [r.source,r.course,r.section,r.semester,r.year,r.instructor,r.meeting_pattern,r.location,r.final_exam,JSON.stringify(r.fields),JSON.stringify(r.skills)].join(" ").toLowerCase();
+    const blob = [r.source,r.course,r.title,r.section,r.semester,r.year,r.instructor,r.meeting_pattern,r.location,r.final_exam,JSON.stringify(r.fields),JSON.stringify(r.skills)].join(" ").toLowerCase();
     if(!blob.includes(q)) return false;
   }
   return true;
@@ -438,7 +440,9 @@ function renderResults(){
   const skSel = document.getElementById("skillFilter"); const curSk = skSel.value;
   skSel.innerHTML = '<option value="">All durable skills</option>' + NACE.map(s=>`<option${s===curSk?" selected":""}>${esc(s)}</option>`).join("");
   document.querySelector("#resultsTable thead").innerHTML =
-    "<tr><th style='width:30px'>✓</th><th>Course</th><th>Sec</th><th>Semester</th>" +
+    "<tr><th style='width:30px'>✓</th><th>Course</th>" +
+    (show("Title") ? "<th>Title</th>" : "") +
+    "<th>Sec</th><th>Semester</th>" +
     (show("Meeting") ? "<th>Meeting</th>" : "") +
     (show("Location") ? "<th>Location</th>" : "") +
     (show("Instructor") ? "<th>Instructor</th>" : "") +
@@ -458,7 +462,9 @@ function renderResults(){
     };
     const sectionFlagged = k => r.flags.includes(k) || (r[k]||"").trim().toLowerCase()==="not stated";
     tr.innerHTML = `<td><input type="checkbox" ${r.reviewed?"checked":""} data-a="rev"></td>
-      <td>${esc(r.course)}</td><td>${esc(r.section)}</td><td>${esc(r.semester)} ${esc(r.year)}</td>` +
+      <td>${esc(r.course)}</td>` +
+      (show("Title") ? `<td class="${(r.title||"")==="not stated"?"flagged":""}">${esc(r.title||"not stated")}</td>` : "") +
+      `<td>${esc(r.section)}</td><td>${esc(r.semester)} ${esc(r.year)}</td>` +
       (show("Meeting") ? `<td class="${sectionFlagged("meeting_pattern")?"flagged":""}">${esc(r.meeting_pattern||"not stated")}</td>` : "") +
       (show("Location") ? `<td class="${sectionFlagged("location")?"flagged":""}">${esc(r.location||"not stated")}</td>` : "") +
       (show("Instructor") ? `<td class="${sectionFlagged("instructor")?"flagged":""}">${esc(r.instructor)}</td>` : "") +
@@ -474,7 +480,7 @@ function renderResults(){
 ["searchBox","semFilter","skillFilter","reviewFilter"].forEach(id => document.getElementById(id).oninput = renderResults);
 
 function renderColPanel(){
-  const toggleable = ["Meeting","Location","Instructor","Durable Skills",...activeFieldNames()];
+  const toggleable = ["Title","Meeting","Location","Instructor","Durable Skills",...activeFieldNames()];
   const panel = document.getElementById("colPanel");
   panel.innerHTML = '<span class="small" style="margin-right:12px;font-weight:600">Show columns:</span>' +
     toggleable.map(name=>`<label style="margin-right:14px;font-size:13px;cursor:pointer;white-space:nowrap"><input type="checkbox" ${!hiddenCols.has(name)?"checked":""} data-col="${esc(name)}"> ${esc(name)}</label>`).join("");
@@ -541,6 +547,7 @@ document.getElementById("reextractFileInput").onchange = async (e) => {
         S.rows.push({
           id:uid(), source:src,
           course: s.course_number||q.course||"not stated",
+          title: s.course_title||"not stated",
           section: s.section||"not stated",
           semester: s.semester||q.semester||"not stated",
           year: String(s.year||q.year||"not stated"),
@@ -572,7 +579,7 @@ function openDetail(r){
   document.getElementById("detailTitle").textContent = r.course+" sec "+r.section+" | "+r.semester+" "+r.year+" | source: "+r.source;
   const names = activeFieldNames();
   let h = "";
-  [["course","Course"],["section","Section"],["semester","Semester"],["year","Year"],["instructor","Instructor"],["meeting_pattern","Meeting Pattern"],["location","Location"],["final_exam","Final Exam"]].forEach(([k,label])=>{
+  [["course","Course"],["title","Course Title"],["section","Section"],["semester","Semester"],["year","Year"],["instructor","Instructor"],["meeting_pattern","Meeting Pattern"],["location","Location"],["final_exam","Final Exam"]].forEach(([k,label])=>{
     h += `<label>${label}${editing.flags.includes(k)?" (AI flagged uncertain)":""}</label><input data-core="${k}" value="${esc(r[k]||"")}">`;
   });
   for(const n of names){
@@ -679,11 +686,11 @@ document.getElementById("dbFileInput").onchange = async e => {
 };
 document.getElementById("csvBtn").onclick = () => {
   const names = activeFieldNames();
-  const head = ["Source File","Course","Section","Semester","Year","Meeting Pattern","Location","Final Exam","Instructor",...names,"Durable Skills","Skills Evidence","AI Uncertainty Flags","Spot-Checked"];
+  const head = ["Source File","Course","Course Title","Section","Semester","Year","Meeting Pattern","Location","Final Exam","Instructor",...names,"Durable Skills","Skills Evidence","AI Uncertainty Flags","Spot-Checked"];
   const csvCell = v => '"' + String(v==null?"":v).replace(/"/g,'""') + '"';
   const lines = [head.map(csvCell).join(",")];
   for(const r of S.rows.filter(rowMatches)){
-    lines.push([r.source,r.course,r.section,r.semester,r.year,r.meeting_pattern||"not stated",r.location||"not stated",r.final_exam||"not stated",r.instructor,
+    lines.push([r.source,r.course,r.title||"not stated",r.section,r.semester,r.year,r.meeting_pattern||"not stated",r.location||"not stated",r.final_exam||"not stated",r.instructor,
       ...names.map(n=>r.fields[n]==null?"not stated":r.fields[n]),
       r.skills.map(s=>s.skill).join("; "),
       r.skills.map(s=>s.skill+": "+s.evidence).join(" | "),
