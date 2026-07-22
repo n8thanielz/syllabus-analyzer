@@ -56,7 +56,7 @@ The API key is stored only in your browser. Nothing is sent to any server other 
 | Attendance Policy | Tracking method, absence limits, grade impact |
 | Classroom Policies & Conduct | Device policy, participation, professionalism expectations |
 
-Core fields extracted on every syllabus regardless of field settings: course number, section, semester, year, instructor, meeting pattern, location, final exam date, NACE durable skills, and AI confidence flags.
+Core fields extracted on every syllabus regardless of field settings: course number, course title, section, semester, year, instructor, meeting pattern, location, final exam date, NACE durable skills, and AI confidence flags.
 
 ## Technical notes
 
