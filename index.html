@@ -191,13 +191,10 @@ const NACE = ["Career & Self-Development","Communication","Critical Thinking","E
 const DEFAULT_FIELDS = [
  {on:true,name:"Learning Outcomes",def:"The stated learning outcomes, objectives, or goals of the course. List each one. They may appear under headings like Course Objectives, Course Outcomes, or inside prose such as 'by the end of this course students will be able to'."},
  {on:true,name:"Topics Covered",def:"The main subject-matter topics taught, drawn from the course description and the week-by-week schedule. List distinct topics, not dates."},
- {on:true,name:"Assessment Methods",def:"Every graded component with its weight or point value, for example 'Exams 40%; Group presentation 22%; Attendance 5%'. Note whether the final exam is comprehensive or departmental if stated."},
- {on:true,name:"Class Format",def:"Delivery and structure: in person, online, hybrid. Note any stated format details such as synchronous vs asynchronous, or blended components."},
- {on:true,name:"Pedagogy",def:"The primary instructional method or methods used in this course -- how the class is taught, not what students do. Examples: lecture-based, Socratic discussion, case-method, problem-based learning, flipped classroom, seminar-style, team-based learning, workshop or studio model, simulation-driven. Note the relative emphasis of each approach if the syllabus describes it. Do not include delivery format (in-person, online, hybrid) or specific student activities -- those are captured in other fields."},
+ {on:true,name:"Assessment Methods",def:"Every graded component with its weight or point value, for example 'Exams 40%; Group presentation 22%; Attendance 5%'. Note whether a final exam is comprehensive or departmental if stated."},
  {on:true,name:"Engagement Activities",def:"List every distinct student activity in this course that is not passive lecture attendance or assigned reading. Include: case studies, group projects and team assignments, simulations and role plays, in-class exercises and workshops, student presentations and debates, guest speaker Q&A sessions, lab work, field experiences and site visits, peer review, reflective writing, polling and quizzes used as learning activities, and any other participatory or hands-on activity. For each, note whether it is individual or group and whether it is graded, if stated. Do not include: listening to lecture, reading textbooks or articles, or watching recorded video."},
  {on:true,name:"Required Materials",def:"Required textbooks, software platforms, calculators, subscriptions, and other required materials, including edition and publisher when given."},
- {on:true,name:"Attendance Policy",def:"How attendance is tracked, whether it affects the grade, how many absences are allowed, and any notable exceptions process."},
- {on:true,name:"Classroom Policies & Conduct",def:"Course-specific expectations for professional behavior, classroom conduct, and academic standards. Include: technology and device policies (phones, laptops), participation expectations and how they factor into the grade, communication standards with the instructor, academic integrity expectations specific to this course, professional behavior or dress requirements, and any stated consequences for unprofessional conduct. Include these even when they reference university policy, as long as the syllabus adds course-specific language or consequences."}
+ {on:true,name:"Attendance Policy",def:"How attendance is tracked, whether it affects the grade, how many absences are allowed, and any notable exceptions process."}
 ];
 let S = { fields: JSON.parse(JSON.stringify(DEFAULT_FIELDS)), rows: [], queue: [] };
 let running = false, stopFlag = false, reextractSources = [];
@@ -209,7 +206,6 @@ function migrateRows(rows){
     if(r.title===undefined) r.title="not stated";
     if(r.meeting_pattern===undefined) r.meeting_pattern="not stated";
     if(r.location===undefined) r.location="not stated";
-    if(r.final_exam===undefined) r.final_exam="not stated";
   }
   return rows;
 }
@@ -312,7 +308,6 @@ Also extract these standard items:
 - section: the section number (e.g. "009"). If the syllabus covers multiple sections, output ONE object per section. If no section number is stated, output one object with section "not stated".
 - meeting_pattern: the days and times the section meets (e.g. "MWF 9:10–10:00 AM", "TR 2:00–3:20 PM"). SECTION-SPECIFIC — will differ across sections.
 - location: the classroom, building, or delivery mode for this section (e.g. "SFEBB 2110", "online", "hybrid"). SECTION-SPECIFIC.
-- final_exam: the date and time of this section's final exam, if stated. SECTION-SPECIFIC.
 - durable_skills: judge which of these NACE career readiness competencies the course develops: ${NACE.join("; ")}. Only tag a skill when the syllabus contains concrete evidence (an activity, assignment, outcome, or policy). For each, give the evidence briefly. Do not tag skills without evidence. Shared across sections.
 - confidence_flags: list the names of any fields (custom or standard) where you were uncertain, the document was ambiguous, or you had to interpret heavily.
 
@@ -323,7 +318,7 @@ Rules:
 - Base everything strictly on the document.
 
 Return ONLY valid JSON, no markdown fences, in this exact shape:
-{"sections":[{"course_number":"","course_title":"","section":"","semester":"","year":"","instructor":"","meeting_pattern":"","location":"","final_exam":"","fields":{${active.map(f=>`"${f.name}":""`).join(",")}},"durable_skills":[{"skill":"","evidence":""}],"confidence_flags":[]}]}`;
+{"sections":[{"course_number":"","course_title":"","section":"","semester":"","year":"","instructor":"","meeting_pattern":"","location":"","fields":{${active.map(f=>`"${f.name}":""`).join(",")}},"durable_skills":[{"skill":"","evidence":""}],"confidence_flags":[]}]}`;
 }
 
 function buildHint(q){
@@ -397,7 +392,6 @@ document.getElementById("runBtn").onclick = async () => {
           instructor: s.instructor || "not stated",
           meeting_pattern: s.meeting_pattern || "not stated",
           location: s.location || "not stated",
-          final_exam: s.final_exam || "not stated",
           fields: s.fields || {},
           skills: Array.isArray(s.durable_skills) ? s.durable_skills.filter(k=>k&&k.skill) : [],
           flags: Array.isArray(s.confidence_flags) ? s.confidence_flags : [],
@@ -425,7 +419,7 @@ function rowMatches(r){
   if(rv==="yes" && !r.reviewed) return false;
   if(rv==="no" && r.reviewed) return false;
   if(q){
-    const blob = [r.source,r.course,r.title,r.section,r.semester,r.year,r.instructor,r.meeting_pattern,r.location,r.final_exam,JSON.stringify(r.fields),JSON.stringify(r.skills)].join(" ").toLowerCase();
+    const blob = [r.source,r.course,r.title,r.section,r.semester,r.year,r.instructor,r.meeting_pattern,r.location,JSON.stringify(r.fields),JSON.stringify(r.skills)].join(" ").toLowerCase();
     if(!blob.includes(q)) return false;
   }
   return true;
@@ -579,7 +573,7 @@ function openDetail(r){
   document.getElementById("detailTitle").textContent = r.course+" sec "+r.section+" | "+r.semester+" "+r.year+" | source: "+r.source;
   const names = activeFieldNames();
   let h = "";
-  [["course","Course"],["title","Course Title"],["section","Section"],["semester","Semester"],["year","Year"],["instructor","Instructor"],["meeting_pattern","Meeting Pattern"],["location","Location"],["final_exam","Final Exam"]].forEach(([k,label])=>{
+  [["course","Course"],["title","Course Title"],["section","Section"],["semester","Semester"],["year","Year"],["instructor","Instructor"],["meeting_pattern","Meeting Pattern"],["location","Location"]].forEach(([k,label])=>{
     h += `<label>${label}${editing.flags.includes(k)?" (AI flagged uncertain)":""}</label><input data-core="${k}" value="${esc(r[k]||"")}">`;
   });
   for(const n of names){
@@ -686,11 +680,11 @@ document.getElementById("dbFileInput").onchange = async e => {
 };
 document.getElementById("csvBtn").onclick = () => {
   const names = activeFieldNames();
-  const head = ["Source File","Course","Course Title","Section","Semester","Year","Meeting Pattern","Location","Final Exam","Instructor",...names,"Durable Skills","Skills Evidence","AI Uncertainty Flags","Spot-Checked"];
+  const head = ["Source File","Course","Course Title","Section","Semester","Year","Meeting Pattern","Location","Instructor",...names,"Durable Skills","Skills Evidence","AI Uncertainty Flags","Spot-Checked"];
   const csvCell = v => '"' + String(v==null?"":v).replace(/"/g,'""') + '"';
   const lines = [head.map(csvCell).join(",")];
   for(const r of S.rows.filter(rowMatches)){
-    lines.push([r.source,r.course,r.title||"not stated",r.section,r.semester,r.year,r.meeting_pattern||"not stated",r.location||"not stated",r.final_exam||"not stated",r.instructor,
+    lines.push([r.source,r.course,r.title||"not stated",r.section,r.semester,r.year,r.meeting_pattern||"not stated",r.location||"not stated",r.instructor,
       ...names.map(n=>r.fields[n]==null?"not stated":r.fields[n]),
       r.skills.map(s=>s.skill).join("; "),
       r.skills.map(s=>s.skill+": "+s.evidence).join(" | "),
